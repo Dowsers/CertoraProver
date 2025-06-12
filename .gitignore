@@ -3,6 +3,7 @@
 .gradle/
 .java-version
 .venv/
+**/emv-*
 	
 ASTExtraction/build/
 CertoraProver/
