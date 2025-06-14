@@ -29,7 +29,11 @@ methods
 
 
 
-// Rule: Total supply should change only by means of mint or burn
+/**
+ * @id ERC20_BASE_001
+ * @dev Total supply should change only by means of mint or burn
+ * @language CVL
+ */
 rule ERC20_BASE_001(method f) {
 	env e;
 
@@ -50,6 +54,11 @@ rule ERC20_BASE_001(method f) {
 // invariant ERC20_BASE_002(address user)
 //     balanceOf(user) <= totalSupply();
 
+/**
+ * @id ERC20_BASE_002
+ * @dev Each user's balance must not exceed the total supply
+ * @language CVL
+ */
 rule ERC20_BASE_002() {
     env e;
     method f;
@@ -99,7 +108,11 @@ invariant ERC20_BASE_004()
     to_mathint(balanceOf(0)) == 0;
 
 
-// Rule: Transfers to the zero address should not be allowed
+/**
+ * @id ERC20_BASE_005
+ * @dev Transfers to the zero address should not be allowed
+ * @language CVL
+ */
 rule ERC20_BASE_005(env e) {
 	uint256 amount = balanceOf(e.msg.sender);
 	bool res = transfer@withrevert(e, 0, amount);
@@ -107,7 +120,11 @@ rule ERC20_BASE_005(env e) {
 }
 
 
-// Rule: Transfers to zero address should not be allowed
+/**
+ * @id ERC20_BASE_006
+ * @dev Transfers to zero address should not be allowed
+ * @language CVL
+ */
 rule ERC20_BASE_006(env e, uint256 value) {
 	uint256 balance_sender = balanceOf(e.msg.sender);
 	uint256 curr_allowance = allowance(e, e.msg.sender, currentContract);
@@ -120,7 +137,11 @@ rule ERC20_BASE_006(env e, uint256 value) {
 }
 
 
-// Rule: Self transfers should not break accounting XXX
+/**
+ * @id ERC20_BASE_007
+ * @dev Self transfers should not break accounting
+ * @language CVL
+ */
 rule ERC20_BASE_007(uint256 value){
 	env e;
 	uint256 balance_sender = balanceOf(e.msg.sender);
@@ -138,7 +159,11 @@ rule ERC20_BASE_007(uint256 value){
 
 
 
-// Rule: Self transfers should not break accounting
+/**
+ * @id ERC20_BASE_008
+ * @dev Self transfers should not break accounting
+ * @language CVL
+ */
 rule ERC20_BASE_008(uint256 value){
 	env e;
 	uint256 balance_sender = balanceOf(e.msg.sender);
@@ -155,7 +180,11 @@ rule ERC20_BASE_008(uint256 value){
 }
 
 
-// Rule: Transfers for more than available balance should not be allowed
+/**
+ * @id ERC20_BASE_009
+ * @dev Transfers for more than available balance should not be allowed
+ * @language CVL
+ */
 rule ERC20_BASE_009(address to, uint256 value){
 	env e;
 	uint256 balance_sender = balanceOf(e.msg.sender);
@@ -171,7 +200,11 @@ rule ERC20_BASE_009(address to, uint256 value){
 	assert balance_receiver == balanceOf(to), "Transfer for more than balance modified target balance";
 }
 
-// Rule: Transfers for more than available balance should not be allowed
+/**
+ * @id ERC20_BASE_010
+ * @dev Transfers for more than available balance should not be allowed
+ * @language CVL
+ */
 rule ERC20_BASE_010(address to, uint256 value) {
 	env e;
 	uint256 balance_sender = balanceOf(e.msg.sender);
@@ -190,7 +223,11 @@ rule ERC20_BASE_010(address to, uint256 value) {
 }
 
 
-// Rule: Zero amount transfers should not break accounting
+/**
+ * @id ERC20_BASE_011
+ * @dev Zero amount transfers should not break accounting
+ * @language CVL
+ */
 rule ERC20_BASE_011(address to){
 	env e;
 	uint256 balance_sender = balanceOf(currentContract);
@@ -206,7 +243,11 @@ rule ERC20_BASE_011(address to){
 	assert balance_receiver == balanceOf(to), "Zero amount transfer modified target balance";
 }
 
-// Rule: Zero amount transfers should not break accounting
+/**
+ * @id ERC20_BASE_012
+ * @dev Zero amount transfers should not break accounting
+ * @language CVL
+ */
 rule ERC20_BASE_012(address to){
 	env e;
 	uint256 balance_sender = balanceOf(e.msg.sender);
@@ -224,7 +265,11 @@ rule ERC20_BASE_012(address to){
 }
 
 
-// Rule: Transfers should update accounting correctly
+/**
+ * @id ERC20_BASE_013
+ * @dev Transfers should update accounting correctly
+ * @language CVL
+ */
 rule ERC20_BASE_013(address to, uint256 value){
 	env e;
 	require to != e.msg.sender;
@@ -243,7 +288,11 @@ rule ERC20_BASE_013(address to, uint256 value){
 }
 
 
-// Rule: Transfers should update accounting correctly
+/**
+ * @id ERC20_BASE_014
+ * @dev Transfers should update accounting correctly
+ * @language CVL
+ */
 rule ERC20_BASE_014(address to, uint256 value){
 	env e;
 	require to != currentContract;
@@ -273,6 +322,11 @@ rule ERC20_BASE_014(address to, uint256 value){
 //         }
 //     }
 
+/**
+ * @id ERC20_BASE_015
+ * @dev Approve should set correct allowances
+ * @language CVL
+ */
 rule ERC20_BASE_015(address to , uint256 value){
 	env e;
 	bool res = approve(e, to, value);
@@ -282,7 +336,11 @@ rule ERC20_BASE_015(address to , uint256 value){
 }
 
 
-// Rule: Approve should set correct allowances
+/**
+ * @id ERC20_BASE_016
+ * @dev Approve should set correct allowances
+ * @language CVL
+ */
 rule ERC20_BASE_016(address to , uint256 value, uint256 value2){
     env e;
     bool res = approve(e, to, value);
@@ -301,7 +359,11 @@ rule ERC20_BASE_016(address to , uint256 value, uint256 value2){
 
 
 
-// Rule: TransferFrom should decrease allowance   XXXX
+/**
+ * @id ERC20_BASE_017
+ * @dev TransferFrom should decrease allowance
+ * @language CVL
+ */
 rule ERC20_BASE_017(address to , uint256 value){
 	env e;
 
@@ -358,7 +420,11 @@ rule ERC20_BASE_017(address to , uint256 value){
 // }
 
 
-/// @title Transfer must revert if the sender's balance is too small
+/**
+ * @id transferReverts
+ * @dev Transfer must revert if the sender's balance is too small
+ * @language CVL
+ */
 rule transferReverts(address recipient, uint amount) {
     env e;
 
@@ -371,12 +437,10 @@ rule transferReverts(address recipient, uint amount) {
 }
 
 
-/** @title Transfer must not revert unless
- * - the sender doesn't have enough funds,
- * - or the message value is nonzero,
- * - or the recipient's balance would overflow,
- * - or the message sender is 0,
- * - or the recipient is 0
+/**
+ * @id transferDoesntRevert
+ * @dev Transfer must not revert unless - the sender doesn't have enough funds, - or the message value is nonzero, - or the recipient's balance would overflow, - or the message sender is 0, - or the recipient is 0
+ * @language CVL
  */
 rule transferDoesntRevert(address recipient, uint amount) {
     env e;
