@@ -34,7 +34,7 @@ methods
  * @dev Total supply should change only by means of mint or burn
  * @language CVL
  */
-rule ERC20_BASE_001(method f) {
+rule ERC20_BASE_001(env e, method f) {
 	env e;
 
 	uint256 totalSupplyBefore = totalSupply();
@@ -59,12 +59,10 @@ rule ERC20_BASE_001(method f) {
  * @dev Each user's balance must not exceed the total supply
  * @language CVL
  */
-rule ERC20_BASE_002() {
-    env e;
-    method f;
-    calldataarg args;
+rule ERC20_BASE_002(env e, method f) {
 
     require e.msg.sender != 0;
+    calldataarg args;
 
     uint256 balance_before = balanceOf(e.msg.sender);
     uint256 totalSupply_before = totalSupply();
@@ -91,17 +89,6 @@ hook Sstore _balances[KEY address user] uint256 newBalance (uint256 oldBalance)
 invariant ERC20_BASE_003()
     to_mathint(totalSupply()) == sumBalances;
 
-// rule ERC20_BASE_003() {
-//     env e;
-       // Define the addresses of specific users to check
-//     address everyUser1;
-//     address everyUser2;
-//     address everyUser3;
-//     uint256 totalUserBalances = balanceOf(everyUser1) + balanceOf(everyUser2) + balanceOf(everyUser3);
-       // Ensure that the sum of user balances does not exceed the total supply
-//     assert totalUserBalances <= totalSupply(), "Sum of user balances higher than total supply";
-// }
-
 
 // Rule: Address zero should have zero balance
 invariant ERC20_BASE_004()
@@ -114,8 +101,10 @@ invariant ERC20_BASE_004()
  * @language CVL
  */
 rule ERC20_BASE_005(env e) {
-	uint256 amount = balanceOf(e.msg.sender);
-	bool res = transfer@withrevert(e, 0, amount);
+    address holder;
+    address recipient = 0;
+	uint256 amount = balanceOf(holder);
+	bool res = transfer@withrevert(e, recipient, amount);
     assert lastReverted || !res, "Transfer to address zero did not revert or succeeded unexpectedly";
 }
 
@@ -125,14 +114,19 @@ rule ERC20_BASE_005(env e) {
  * @dev Transfers to zero address should not be allowed
  * @language CVL
  */
-rule ERC20_BASE_006(env e, uint256 value) {
-	uint256 balance_sender = balanceOf(e.msg.sender);
-	uint256 curr_allowance = allowance(e, e.msg.sender, currentContract);
-	uint256 maxValue = balance_sender >= curr_allowance ? curr_allowance : balance_sender;
+rule ERC20_BASE_006(env e) {
 
-    require value <= curr_allowance  && value <= balance_sender;
+    address spender = e.msg.sender;
+    address holder;
+    address recipient = 0;
+    uint256 amount;
 
-	bool res = transferFrom@withrevert(e, e.msg.sender, 0, value);
+	uint256 balance_sender = balanceOf(holder);
+	uint256 curr_allowance = allowance(e, holder, spender);
+
+    require amount <= curr_allowance  && amount <= balance_sender;
+
+	bool res = transferFrom@withrevert(e, holder, recipient, amount);
     assert lastReverted || !res, "Transfer to address zero did not revert or succeeded unexpectedly";
 }
 
@@ -142,19 +136,30 @@ rule ERC20_BASE_006(env e, uint256 value) {
  * @dev Self transfers should not break accounting
  * @language CVL
  */
-rule ERC20_BASE_007(uint256 value){
-	env e;
-	uint256 balance_sender = balanceOf(e.msg.sender);
+rule ERC20_BASE_007(env e){
+    requireInvariant ERC20_BASE_003();
 
-    require e.msg.sender != 0;
-	require balance_sender > 0;
-    require value <= balance_sender;
+    address holder = e.msg.sender;
+    uint256 amount;
 
-	bool res = transfer(e, e.msg.sender, value);
+    require holder != 0;
 
-	assert res, "Failed self transfer";
-	assert balance_sender == balanceOf(e.msg.sender), "Self transfer breaks accounting";
+    // cache state
+    uint256 holderBalanceBefore    = balanceOf(holder);
+
+    require amount <= holderBalanceBefore;
+    require holderBalanceBefore > 0;
+
+    // run transaction
+    bool res = transfer(e, holder, amount);
+
+    // check outcome
+    assert res, "Failed self transfer";
+    // balance of holder remains unchanged
+    assert balanceOf(holder) == holderBalanceBefore, "Self transfer breaks accounting";
 }
+
+
 
 
 
@@ -164,20 +169,32 @@ rule ERC20_BASE_007(uint256 value){
  * @dev Self transfers should not break accounting
  * @language CVL
  */
-rule ERC20_BASE_008(uint256 value){
-	env e;
-	uint256 balance_sender = balanceOf(e.msg.sender);
-	uint256 curr_allowance = allowance(e,e.msg.sender, currentContract);
+rule ERC20_BASE_008(env e){
+    requireInvariant ERC20_BASE_003();
 
-    require e.msg.sender != 0;
-	require balance_sender > 0 && curr_allowance > 0;
-    require value <= balance_sender && value <= curr_allowance;
+    address spender = e.msg.sender;
+    address holder;
+    uint256 amount;
 
-	bool res = transferFrom(e, e.msg.sender, e.msg.sender, value);
+    require holder != 0;
 
+    // cache state
+    uint256 holderBalanceBefore    = balanceOf(holder);
+    uint256 allowanceBefore        = allowance(holder, spender);
+
+    require amount <= holderBalanceBefore;
+    require holderBalanceBefore > 0 && allowanceBefore > 0;
+    require amount <= holderBalanceBefore && amount <= allowanceBefore;
+
+    // run transaction
+    bool res = transferFrom(e, holder, holder, amount);
+
+    // check outcome
 	assert res, "Failed self transferFrom";
-	assert balance_sender == balanceOf(e.msg.sender), "Self transferFrom breaks accounting";
+    // balance of holder remains unchanged
+    assert balanceOf(holder) == holderBalanceBefore, "Self transferFrom breaks accounting";
 }
+
 
 
 /**
@@ -185,19 +202,24 @@ rule ERC20_BASE_008(uint256 value){
  * @dev Transfers for more than available balance should not be allowed
  * @language CVL
  */
-rule ERC20_BASE_009(address to, uint256 value){
-	env e;
-	uint256 balance_sender = balanceOf(e.msg.sender);
-	uint256 balance_receiver = balanceOf(to);
+rule ERC20_BASE_009(env e){
+    requireInvariant ERC20_BASE_003();
 
-    require e.msg.sender != 0;
-    require balance_sender < value;
+    address holder;
+    address recipient;
+    uint256 amount;
 
-	transfer@withrevert(e, to, value);
+	uint256 holderBalanceBefore = balanceOf(holder);
+	uint256 recipientBalanceBefore = balanceOf(recipient);
+
+    require holder!= 0;
+    require holderBalanceBefore < amount;
+
+	transfer@withrevert(e, recipient, amount);
 
     assert lastReverted, "Transfer for more than balance did not revert";
-	assert balance_sender == balanceOf(e.msg.sender), "Transfer for more than balance modified source balance";
-	assert balance_receiver == balanceOf(to), "Transfer for more than balance modified target balance";
+	assert holderBalanceBefore == balanceOf(holder), "Transfer for more than balance modified source balance";
+	assert recipientBalanceBefore == balanceOf(recipient), "Transfer for more than balance modified target balance";
 }
 
 /**
@@ -205,21 +227,28 @@ rule ERC20_BASE_009(address to, uint256 value){
  * @dev Transfers for more than available balance should not be allowed
  * @language CVL
  */
-rule ERC20_BASE_010(address to, uint256 value) {
-	env e;
-	uint256 balance_sender = balanceOf(e.msg.sender);
-	uint256 balance_receiver = balanceOf(to);
-	uint256 curr_allowance = allowance(e,e.msg.sender, currentContract);
+rule ERC20_BASE_010(env e) {
+    requireInvariant ERC20_BASE_003();
 
-    require e.msg.sender != 0;
-	require curr_allowance > balance_sender;
-    require balance_sender < value;
+    address spender = e.msg.sender;
+    address holder;
+    address recipient;
+    uint256 amount;
 
-	bool res = transferFrom@withrevert(e,e.msg.sender, to, value);
+    require holder != 0 && recipient != 0;
+
+	uint256 holderBalanceBefore = balanceOf(holder);
+	uint256 recipientBalanceBefore = balanceOf(to);
+	uint256 allowanceBefore = allowance(e, holder, spender);
+
+	require allowanceBefore > holderBalanceBefore;
+    require holderBalanceBefore < value;
+
+	bool res = transferFrom@withrevert(e, holder, recipient, value);
 
     assert lastReverted, "TransferFrom for more than balance should revert";
-	assert balance_sender == balanceOf(e.msg.sender), "TransferFrom for more than balance modified source balance";
-	assert balance_receiver == balanceOf(to), "TransferFrom for more than balance modified target balance";
+	assert holderBalanceBefore == balanceOf(holder), "TransferFrom for more than balance modified source balance";
+	assert recipientBalanceBefore == balanceOf(to), "TransferFrom for more than balance modified target balance";
 }
 
 
@@ -228,41 +257,64 @@ rule ERC20_BASE_010(address to, uint256 value) {
  * @dev Zero amount transfers should not break accounting
  * @language CVL
  */
-rule ERC20_BASE_011(address to){
-	env e;
-	uint256 balance_sender = balanceOf(currentContract);
-	uint256 balance_receiver = balanceOf(to);
+rule ERC20_BASE_011(env e){
+    requireInvariant ERC20_BASE_003();
+    address holder = e.msg.sender;
+    address recipient;
+    uint256 amount = 0;
 
-    require e.msg.sender != 0;
-	require balance_sender > 0;
+    require holder != 0;
 
-	bool res = transfer(e, to, 0);
+    // cache state
+    uint256 holderBalanceBefore    = balanceOf(holder);
+    uint256 recipientBalanceBefore = balanceOf(recipient);
 
-	assert res, "Zero amount transfer failed";
-	assert balance_sender == balanceOf(currentContract), "Zero amount transfer modified source balance";
-	assert balance_receiver == balanceOf(to), "Zero amount transfer modified target balance";
+    require holderBalanceBefore > 0;
+
+    // run transaction
+    bool res = transfer(e, recipient, amount);
+
+    // check outcome
+    assert res, "Zero amount transfer failed";
+
+    // balances of holder and recipient are updated
+    assert balanceOf(holder) == holderBalanceBefore, "Zero amount transfer modified source balance";
+    assert balanceOf(recipient) == recipientBalanceBefore, "Zero amount transfer modified target balance";
 }
+
+
 
 /**
  * @id ERC20_BASE_012
  * @dev Zero amount transfers should not break accounting
  * @language CVL
  */
-rule ERC20_BASE_012(address to){
-	env e;
-	uint256 balance_sender = balanceOf(e.msg.sender);
-	uint256 balance_receiver = balanceOf(to);
-	uint256 curr_allowance = allowance(e,e.msg.sender, currentContract);
+rule ERC20_BASE_012(env e){
+    requireInvariant ERC20_BASE_003();
+    address spender = e.msg.sender;
+    address holder;
+    address recipient;
+    uint256 amount = 0;
 
-    require e.msg.sender != 0;
-	require balance_sender > 0 && curr_allowance > 0;
+    require recipient != 0 && holder != 0;
 
-	bool res = transferFrom(e, e.msg.sender, to, 0);
+    // cache state
+    uint256 allowanceBefore        = allowance(holder, spender);
+    uint256 holderBalanceBefore    = balanceOf(holder);
+    uint256 recipientBalanceBefore = balanceOf(recipient);
 
-	assert res, "Zero amount transferFrom failed";
-	assert balance_sender == balanceOf(e.msg.sender), "Zero amount transfer modified source balance";
-	assert balance_receiver == balanceOf(to), "Zero amount transfer modified target balance";
+    require holderBalanceBefore > 0 && allowanceBefore > 0;
+
+    // run transaction
+    bool res = transferFrom(e, holder, recipient, amount);
+
+    // check outcome
+    assert res, "Zero amount transferFrom failed";
+    // balances of holder and recipient are updated
+    assert balanceOf(holder)    == holderBalanceBefore, "Zero amount transfer modified source balance";
+    assert balanceOf(recipient) == recipientBalanceBefore, , "Zero amount transfer modified target balance";
 }
+
 
 
 /**
@@ -270,21 +322,25 @@ rule ERC20_BASE_012(address to){
  * @dev Transfers should update accounting correctly
  * @language CVL
  */
-rule ERC20_BASE_013(address to, uint256 value){
-	env e;
-	require to != e.msg.sender;
+rule ERC20_BASE_013(env e) {
+    requireInvariant ERC20_BASE_003();
 
-	uint256 balance_sender = balanceOf(e.msg.sender);
-	uint256 balance_receiver = balanceOf(to);
+    address holder = e.msg.sender;
+    address recipient;
+    uint256 amount;
 
-	require balance_sender > 2;
-    require value <= balance_sender && value > 0;
+    // cache state
+    uint256 holderBalanceBefore    = balanceOf(holder);
+    uint256 recipientBalanceBefore = balanceOf(recipient);
 
-	bool res = transfer(e, to, value);
+    // run transaction
+    bool res = transfer(e, recipient, amount);
 
-	assert res, "Transfer failed";
-	assert assert_uint256(balance_sender - value) == balanceOf(e.msg.sender), "Wrong source balance after transfer";
-	assert assert_uint256(balance_receiver + value) == balanceOf(to), "Wrong target balance after transfer";
+    // check outcome
+    assert res, "Transfer failed";
+    // balances of holder and recipient are updated
+    assert balanceOf(holder) == holderBalanceBefore    - (holder == recipient ? 0 : amount);
+    assert balanceOf(recipient) == recipientBalanceBefore + (holder == recipient ? 0 : amount);
 }
 
 
@@ -293,47 +349,52 @@ rule ERC20_BASE_013(address to, uint256 value){
  * @dev Transfers should update accounting correctly
  * @language CVL
  */
-rule ERC20_BASE_014(address to, uint256 value){
-	env e;
-	require to != currentContract;
-	require to != e.msg.sender;
+rule ERC20_BASE_014(env e){
+    requireInvariant ERC20_BASE_003();
 
-	uint256 balance_sender = balanceOf(e.msg.sender);
-	uint256 balance_receiver = balanceOf(to);
-	uint256 curr_allowance = allowance(e,e.msg.sender, currentContract);
+    address spender = e.msg.sender;
+    address holder;
+    address recipient;
+    uint256 amount;
 
-	require balance_sender > 2 && curr_allowance > balance_sender;
-    require value <= balance_sender && value > 0;
+    require recipient != 0 && holder != 0;
+    require recipient != holder;
 
-	bool res = transferFrom(e, e.msg.sender, to, value);
+    // cache state
+    uint256 allowanceBefore        = allowance(holder, spender);
+    uint256 holderBalanceBefore    = balanceOf(holder);
+    uint256 recipientBalanceBefore = balanceOf(recipient);
 
-	assert res, "TransferFrom failed";
-	assert assert_uint256(balance_sender - value) == balanceOf(e.msg.sender), "Wrong source balance after transfer";
-	assert assert_uint256(balance_receiver + value) == balanceOf(to), "Wrong target balance after transfer";
+    require(holderBalanceBefore > 0 && allowanceBefore > holderBalanceBefore);
+
+    // run transaction
+    bool res = transferFrom(e, holder, recipient, amount);
+
+    // check outcome
+    assert res, "TransferFrom failed";
+
+    // balances of holder and recipient are updated
+    assert balanceOf(holder)    == holderBalanceBefore    - (holder == recipient ? 0 : amount);
+    assert balanceOf(recipient) == recipientBalanceBefore + (holder == recipient ? 0 : amount);
 }
 
-
-// Rule: Approve should set correct allowances
-// invariant ERC20_BASE_015_inv(address sender, address to, uint256 value)
-//     approve(to,value) &&
-//     allowance(sender, to) == value{
-//         preserved {
-//             requireInvariant ERC20_BASE_015_inv(e.msg.sender, to, value);
-//         }
-//     }
 
 /**
  * @id ERC20_BASE_015
  * @dev Approve should set correct allowances
  * @language CVL
  */
-rule ERC20_BASE_015(address to , uint256 value){
-	env e;
-	bool res = approve(e, to, value);
+rule ERC20_BASE_015(env e) {
+    address holder = e.msg.sender;
+    address spender;
+    uint256 amount;
 
-	assert res, "Failed to set allowance via approve";
-	assert allowance(e, e.msg.sender, to) == value, "Allowance not set correctly";
+    approve(e, spender, amount);
+
+    assert allowance(holder, spender) == amount, "Allowance not set correctly";
 }
+
+
 
 
 /**
@@ -341,19 +402,25 @@ rule ERC20_BASE_015(address to , uint256 value){
  * @dev Approve should set correct allowances
  * @language CVL
  */
-rule ERC20_BASE_016(address to , uint256 value, uint256 value2){
-    env e;
-    bool res = approve(e, to, value);
+rule ERC20_BASE_016(env e){
+    address holder = e.msg.sender;
+    address spender;
+    uint256 amount;
+    uint256 amount2;
 
-	assert res, "Failed to set allowance via approve";
-	assert allowance(e, e.msg.sender, to) == value, "Allowance not set correctly";
+    bool res = approve(e, spender, amount);
 
-    require value2 < value;
+    assert res, "Failed to set allowance via approve";
+    // check allowance
+    assert allowance(holder, spender) == amount, "Allowance not set correctly";
 
-	bool res2 = approve(e, to, value2);
+    require amount2 < amount;
 
-	assert res2, "Failed to set allowance via approve";
-	assert allowance(e, e.msg.sender, to) == value2, "Allowance not set correctly";
+	res2 = approve(e, spender, amount2);
+
+	assert res2, "Failed to set allowance via approve (seond time)";
+    // check allowance
+	assert allowance(e, holder, spender) == value2, "Allowance not set correctly";
 }
 
 
@@ -364,100 +431,37 @@ rule ERC20_BASE_016(address to , uint256 value, uint256 value2){
  * @dev TransferFrom should decrease allowance
  * @language CVL
  */
-rule ERC20_BASE_017(address to , uint256 value){
-	env e;
+rule ERC20_BASE_017(env e){
+    requireInvariant ERC20_BASE_003();
 
-	require to != currentContract && to != 0;
-	require to != e.msg.sender;
+    address spender = e.msg.sender;
+    address holder;
+    address recipient;
+    uint256 amount;
 
-	uint256 balance_sender = balanceOf(e.msg.sender);
-	uint256 curr_allowance = allowance(e,e.msg.sender, currentContract);
+    // cache state
+    uint256 allowanceBefore        = allowance(holder, spender);
+    uint256 holderBalanceBefore    = balanceOf(holder);
+    uint256 recipientBalanceBefore = balanceOf(recipient);
 
-	require balance_sender > 0 && curr_allowance > balance_sender;
-    require value > 0 && value <= balance_sender;
+    require(holderBalanceBefore > 0 && allowanceBefore > holderBalanceBefore);
 
-	bool res = transferFrom(e, e.msg.sender, to, value);
+    // run transaction
+    transferFrom(e, holder, recipient, amount);
 
-	assert res, "TransferFrom failed";
-    // if (curr_allowance != max_uint256) {
-        assert assert_uint256(curr_allowance - value) == allowance(e, e.msg.sender, currentContract), "Allowance not updated correctly";
-    // }
+    uint256 allowanceAfter = assert_uint256(allowance(holder, spender));
+    if (allowanceBefore != max_uint256) {
+        uint256 expectedAllowance = assert_uint256(allowanceBefore == max_uint256 ? max_uint256 : allowanceBefore - amount);
+
+        // allowance is valid & updated
+        assert allowanceBefore >= amount;
+        assert (allowanceAfter == expectedAllowance);
+
+        // balances of holder and recipient are updated
+        assert balanceOf(holder)    == holderBalanceBefore    - (holder == recipient ? 0 : amount);
+        assert balanceOf(recipient) == recipientBalanceBefore + (holder == recipient ? 0 : amount);
+    }
+    else assert true;
 }
 
 
-
-/*
-    The function below just calls (dispatch) all methods (an arbitrary one) from the contract,
-    using given [env e], [address from] and [address to].
-    We use this function in several rules. The usecase is typically to show that
-    the call of the function does not affect a "property" of a third party (i.e. != e.msg.sender, from, to),
-    such as the balance or allowance.
-
-*/
-// function callFunctionWithParams(env e, method f, address from, address to) {
-//     uint256 amount;
-
-//     if (f.selector == sig:transfer(address, uint256).selector) {
-//         transfer(e, to, amount);
-//     } else if (f.selector == sig:allowance(address, address).selector) {
-//         allowance(e, from, to);
-//     } else if (f.selector == sig:approve(address, uint256).selector) {
-//         approve(e, to, amount);
-//     } else if (f.selector == sig:transferFrom(address, address, uint256).selector) {
-//         transferFrom(e, from, to, amount);
-//     } else if (f.selector == sig:increaseAllowance(address, uint256).selector) {
-//         increaseAllowance(e, to, amount);
-//     } else if (f.selector == sig:decreaseAllowance(address, uint256).selector) {
-//         decreaseAllowance(e, to, amount);
-//     } else if (f.selector == sig:mint(address, uint256).selector) {
-//         mint(e, to, amount);
-//     } else if (f.selector == sig:burn(address, uint256).selector) {
-//         burn(e, from, amount);
-//     } else {
-//         calldataarg args;
-//         f(e, args);
-//     }
-// }
-
-
-/**
- * @id transferReverts
- * @dev Transfer must revert if the sender's balance is too small
- * @language CVL
- */
-rule transferReverts(address recipient, uint amount) {
-    env e;
-
-    require balanceOf(e.msg.sender) < amount;
-
-    transfer@withrevert(e, recipient, amount);
-
-    assert lastReverted,
-        "transfer(recipient,amount) must revert if sender's balance is less than `amount`";
-}
-
-
-/**
- * @id transferDoesntRevert
- * @dev Transfer must not revert unless - the sender doesn't have enough funds, - or the message value is nonzero, - or the recipient's balance would overflow, - or the message sender is 0, - or the recipient is 0
- * @language CVL
- */
-rule transferDoesntRevert(address recipient, uint amount) {
-    env e;
-
-    require balanceOf(e.msg.sender) > amount;
-    require e.msg.value == 0;  // No payment
-
-    // This requirement prevents overflow of recipient's balance.
-    // We convert `max_uint` to type `mathint` since:
-    //   1. a sum always returns type `mathint`, hence the left hand side is `mathint`,
-    //   2. `mathint` can only be compared to another `mathint`
-    require balanceOf(recipient) + amount < to_mathint(max_uint);
-
-    // Recall that `address(0)` is a special address that in general should not be used
-    require e.msg.sender != 0;
-    require recipient != 0;
-
-    transfer@withrevert(e, recipient, amount);
-    assert !lastReverted;
-}
